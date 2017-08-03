@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"strings"
 	"sync"
 
 	gmail "google.golang.org/api/gmail/v1"
@@ -14,9 +15,13 @@ import (
 )
 
 var progress bool
+var byDomain bool
+var verbose bool
 
 func init() {
 	flag.BoolVar(&progress, "progress", true, "display dot for each email")
+	flag.BoolVar(&byDomain, "domains", false, "also display stats about domains")
+	flag.BoolVar(&verbose, "verbose", true, "display headings and totals")
 }
 
 func main() {
@@ -40,7 +45,9 @@ func main() {
 	}
 
 	total := 0
+	totalCounted := 0
 	senders := map[string]int{}
+	domains := map[string]int{}
 	pageToken := ""
 
 	for {
@@ -74,7 +81,14 @@ func main() {
 				for _, h := range msg.Payload.Headers {
 					if h.Name == "From" {
 						mut.Lock()
+						totalCounted++
 						senders[h.Value]++
+
+						if byDomain {
+							domain := h.Value[strings.LastIndex(h.Value, "@")+1 : len(h.Value)-1]
+							domains[domain]++
+						}
+
 						mut.Unlock()
 						break
 					}
@@ -92,10 +106,28 @@ func main() {
 	}
 
 	if total > 0 {
-		fmt.Printf("Top senders (in %d emails):\n", total)
+		if verbose {
+			fmt.Printf("Top senders (in %d emails):\n", total)
+		}
+
 		sorted := rank(senders)
 		for _, sender := range sorted {
 			fmt.Printf("%d\t%s\n", sender.Count, sender.Name)
+		}
+
+		if verbose {
+			fmt.Printf("%d emails counted\n", totalCounted)
+		}
+
+		if byDomain {
+			if verbose {
+				fmt.Printf("Top domains (in %d emails):\n", total)
+			}
+
+			sorted := rank(domains)
+			for _, d := range sorted {
+				fmt.Printf("%d\t%s\n", d.Count, d.Name)
+			}
 		}
 	}
 }
